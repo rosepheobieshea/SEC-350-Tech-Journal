@@ -1,0 +1,15 @@
+network:
+    ethernets:
+        ens18:
+            dhcp4: false
+            addresses:
+              - 172.16.50.3/29
+
+            routes:
+              - to: default
+                via: 172.16.50.2
+
+            nameservers:
+              addresses:
+                - 172.16.50.2
+    version: 2
