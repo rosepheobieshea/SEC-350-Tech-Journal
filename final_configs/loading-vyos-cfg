@@ -1,0 +1,3 @@
+Load cfg files in vyos with:
+load <file>
+Pretty simple right?
