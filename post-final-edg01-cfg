@@ -1,0 +1,357 @@
+firewall {
+    global-options {
+        all-ping "disable"
+    }
+    ipv4 {
+        name DMZ-to-LAN {
+            default-action "drop"
+            default-log
+            rule 1 {
+                action "accept"
+                state "established"
+            }
+            rule 10 {
+                action "accept"
+                description "Allow Wazuh ports"
+                destination {
+                    address "172.16.200.10"
+                    port "1514-1515"
+                }
+                protocol "tcp"
+            }
+            rule 53 {
+                action "accept"
+                description "Allow DNS for DMZ hosts"
+                destination {
+                    port "53"
+                }
+                protocol "tcp_udp"
+            }
+        }
+        name DMZ-to-WAN {
+            default-action "drop"
+            default-log
+            description "Firewall from DMZ to WAN"
+            rule 1 {
+                action "accept"
+                description "Allow return traffic"
+                state "established"
+            }
+        }
+        name LAN-to-DMZ {
+            default-action "drop"
+            default-log
+            description "Firewall from LAN to DMZ"
+            rule 1 {
+                action "accept"
+                state "established"
+            }
+            rule 15 {
+                action "accept"
+                description "Allow HTTPS communication to nginx"
+                destination {
+                    address "172.16.50.3"
+                    port "443"
+                }
+                protocol "tcp"
+            }
+            rule 20 {
+                action "accept"
+                description "Allow SSH from LAN to jump"
+                destination {
+                    address "172.16.50.4"
+                    port "22"
+                }
+                protocol "tcp"
+                source {
+                    address "172.16.150.10"
+                }
+            }
+            rule 53 {
+                action "accept"
+                description "Allow DNS to DMZ hosts"
+                destination {
+                    port "53"
+                }
+                protocol "tcp_udp"
+            }
+            rule 60 {
+                action "accept"
+                description "Allow Wazuh Communication"
+                destination {
+                    port "1514-1515"
+                }
+                protocol "tcp"
+            }
+        }
+        name LAN-to-WAN {
+            default-action "accept"
+            default-log
+            description "Firewall from LAN to WAN"
+        }
+        name WAN-to-DMZ {
+            default-action "drop"
+            default-log
+            description "Firewall from WAN to DMZ"
+            rule 1 {
+                action "accept"
+                description "Allow return traffic"
+                state "established"
+            }
+            rule 15 {
+                action "accept"
+                description "Allow HTTPS traffic to nginx"
+                destination {
+                    address "172.16.50.3"
+                    port "443"
+                }
+                protocol "tcp"
+            }
+            rule 22 {
+                action "accept"
+                description "Allow SSh traffic to jump"
+                destination {
+                    address "172.16.50.4"
+                    port "22"
+                }
+                protocol "tcp"
+            }
+            rule 70 {
+                action "accept"
+                description "Allow NTP for DMZ hosts"
+                destination {
+                    port "123"
+                }
+                protocol "udp"
+            }
+        }
+        name WAN-to-LAN {
+            default-action "drop"
+            default-log
+            description "Firewall from WAN to LAN"
+            rule 1 {
+                action "accept"
+                state "established"
+            }
+        }
+    }
+    zone DMZ {
+        from LAN {
+            firewall {
+                name "LAN-to-DMZ"
+            }
+        }
+        from WAN {
+            firewall {
+                name "WAN-to-DMZ"
+            }
+        }
+        member {
+            interface "eth2"
+        }
+    }
+    zone LAN {
+        from DMZ {
+            firewall {
+                name "DMZ-to-LAN"
+            }
+        }
+        from WAN {
+            firewall {
+                name "LAN-to-WAN"
+            }
+        }
+        member {
+            interface "eth1"
+        }
+    }
+    zone WAN {
+        from DMZ {
+            firewall {
+                name "DMZ-to-WAN"
+            }
+        }
+        from LAN {
+            firewall {
+                name "LAN-to-WAN"
+            }
+        }
+        member {
+            interface "eth0"
+        }
+    }
+}
+interfaces {
+    ethernet eth0 {
+        address "10.0.17.114/24"
+        description "WAN"
+        hw-id "bc:24:11:80:3c:4a"
+    }
+    ethernet eth1 {
+        address "172.16.150.2/24"
+        description "LAN"
+        hw-id "bc:24:11:f0:ca:71"
+    }
+    ethernet eth2 {
+        address "172.16.50.2/29"
+        description "DMZ"
+        hw-id "bc:24:11:92:06:df"
+    }
+    loopback lo {
+    }
+}
+nat {
+    destination {
+        rule 15 {
+            description "Allow HTTPS traffic to nginx"
+            destination {
+                port "443"
+            }
+            inbound-interface {
+                name "eth0"
+            }
+            protocol "tcp"
+            translation {
+                address "172.16.50.3"
+            }
+        }
+        rule 22 {
+            description "Allow SSH from WAN to jump"
+            inbound-interface {
+                name "eth0"
+            }
+            protocol "tcp"
+            translation {
+                address "172.16.50.4"
+                port "22"
+            }
+        }
+    }
+    source {
+        rule 10 {
+            description "NAT from DMZ to WAN"
+            outbound-interface {
+                name "eth0"
+            }
+            source {
+                address "172.16.50.0/29"
+            }
+            translation {
+                address "masquerade"
+            }
+        }
+        rule 20 {
+            description "NAT from LAN to WAN"
+            outbound-interface {
+                name "eth0"
+            }
+            source {
+                address "172.16.150.0/24"
+            }
+            translation {
+                address "masquerade"
+            }
+        }
+        rule 30 {
+            description "NAT from MGMT to WAN"
+            outbound-interface {
+                name "eth0"
+            }
+            source {
+                address "172.16.200.0/28"
+            }
+            translation {
+                address "masquerade"
+            }
+        }
+    }
+}
+protocols {
+    static {
+        route 0.0.0.0/0 {
+            next-hop 10.0.17.2 {
+            }
+        }
+        route 172.16.200.0/28 {
+            next-hop 172.16.150.3 {
+            }
+        }
+    }
+}
+service {
+    dns {
+        forwarding {
+            allow-from "172.16.50.0/29"
+            allow-from "172.16.150.0/24"
+            allow-from "172.16.200.0/28"
+            listen-address "172.16.50.2"
+            listen-address "172.16.150.2"
+            system
+        }
+    }
+    ntp {
+        allow-client {
+            address "0.0.0.0/0"
+            address "::/0"
+        }
+        server time1.vyos.net {
+        }
+        server time2.vyos.net {
+        }
+        server time3.vyos.net {
+        }
+    }
+    ssh {
+        listen-address "0.0.0.0"
+    }
+}
+system {
+    config-management {
+        commit-revisions "100"
+    }
+    conntrack {
+        modules {
+            ftp
+            h323
+            nfs
+            pptp
+            sip
+            sqlnet
+            tftp
+        }
+    }
+    console {
+        device ttyS0 {
+            speed "115200"
+        }
+    }
+    host-name "edge01-rose"
+    login {
+        user rose {
+            authentication {
+                encrypted-password "$6$rounds=656000$EPdbY1gZD.PSChTv$vLUAtInknFLXHqWDiZxATb6KXCGRylAFKVA3KnlzDTjiP5NuO3tnso2ZHst6RZIV4rctxfh8FA5zbTQ0V42Gl."
+            }
+        }
+        user vyos {
+            authentication {
+                encrypted-password "$6$rounds=656000$omNYPUe5w2agfJEc$Kf9jAIPhE7pM4JrLu0do.1X8yn2GFrVxqbg1sxz87UJssqeM.neUf8DI7uxdvFQziMN.XjcnsJwCguqaMN0/N1"
+            }
+        }
+    }
+    name-server "10.0.17.2"
+    syslog {
+        local {
+            facility all {
+                level "info"
+            }
+            facility local7 {
+                level "debug"
+            }
+        }
+    }
+}
+
+
+// Warning: Do not remove the following line.
+// vyos-config-version: "bgp@6:broadcast-relay@1:cluster@2:config-management@1:conntrack@6:conntrack-sync@2:container@3:dhcp-relay@2:dhcp-server@11:dhcpv6-server@6:dns-dynamic@4:dns-forwarding@4:firewall@20:flow-accounting@2:https@7:ids@2:interfaces@33:ipoe-server@4:ipsec@13:isis@3:l2tp@9:lldp@3:mdns@1:monitoring@2:nat@8:nat66@3:nhrp@1:ntp@3:openconnect@3:openvpn@4:ospf@2:pim@1:policy@9:pppoe-server@11:pptp@5:qos@3:quagga@12:reverse-proxy@3:rip@1:rpki@2:salt@1:snmp@3:ssh@2:sstp@6:system@29:vpp@1:vrf@3:vrrp@4:vyos-accel-ppp@2:wanloadbalance@4:webproxy@2"
+// Release version: 2025.09.10-0018-rolling
